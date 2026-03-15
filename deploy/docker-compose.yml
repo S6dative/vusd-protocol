@@ -1,0 +1,406 @@
+# VUSD Protocol — Docker Compose for Signet Testnet
+#
+# Services:
+#   bitcoind   — Bitcoin Core in signet mode
+#   lnd-1..7   — 7 LND nodes (one per oracle operator)
+#   oracle-1..7 — VUSD oracle nodes (one per LND node)
+#   keeper-1..3 — Keeper bots watching for liquidations
+#   vusd-node  — Main VUSD vault engine + CLI server
+#
+# Quick start:
+#   cp .env.example .env          # fill in your keys/passwords
+#   docker compose up bitcoind    # wait for IBD (~30s on signet)
+#   docker compose up             # bring up everything else
+#
+# Ports:
+#   8332  — bitcoind RPC
+#   10009 — LND gRPC (lnd-1; others on 10010–10015)
+#   18443 — bitcoind signet P2P
+
+version: "3.9"
+
+networks:
+  vusd_net:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  bitcoind_data:
+  lnd1_data:
+  lnd2_data:
+  lnd3_data:
+  lnd4_data:
+  lnd5_data:
+  lnd6_data:
+  lnd7_data:
+  vusd_data:
+
+services:
+
+  # ── Bitcoin Core (signet) ────────────────────────────────────────────────────
+  bitcoind:
+    image: lncm/bitcoind:v26.0
+    restart: unless-stopped
+    networks:
+      vusd_net:
+        ipv4_address: 172.28.1.1
+    ports:
+      - "8332:8332"   # RPC
+      - "38333:38333" # signet P2P
+    volumes:
+      - bitcoind_data:/data/.bitcoin
+      - ./bitcoin.conf:/data/.bitcoin/bitcoin.conf:ro
+    environment:
+      - BITCOIN_DATA=/data/.bitcoin
+    command: >
+      bitcoind
+        -signet
+        -server
+        -rpcuser=${BITCOIN_RPC_USER}
+        -rpcpassword=${BITCOIN_RPC_PASS}
+        -rpcallowip=172.28.0.0/16
+        -rpcbind=0.0.0.0
+        -zmqpubrawblock=tcp://0.0.0.0:28332
+        -zmqpubrawtx=tcp://0.0.0.0:28333
+        -txindex=1
+    healthcheck:
+      test: ["CMD", "bitcoin-cli", "-signet",
+             "-rpcuser=${BITCOIN_RPC_USER}",
+             "-rpcpassword=${BITCOIN_RPC_PASS}",
+             "getblockchaininfo"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  # ── LND nodes (oracle operators, one each) ───────────────────────────────────
+  lnd-1:
+    image: lightninglabs/lnd:v0.17.4-beta
+    restart: unless-stopped
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    networks:
+      vusd_net:
+        ipv4_address: 172.28.2.1
+    ports:
+      - "10009:10009" # gRPC
+    volumes:
+      - lnd1_data:/root/.lnd
+      - ./lnd.conf:/root/.lnd/lnd.conf:ro
+    environment:
+      - LND_ALIAS=vusd-oracle-1
+    command: >
+      lnd
+        --bitcoin.active
+        --bitcoin.signet
+        --bitcoin.node=bitcoind
+        --bitcoind.rpchost=bitcoind
+        --bitcoind.rpcuser=${BITCOIN_RPC_USER}
+        --bitcoind.rpcpass=${BITCOIN_RPC_PASS}
+        --bitcoind.zmqpubrawblock=tcp://bitcoind:28332
+        --bitcoind.zmqpubrawtx=tcp://bitcoind:28333
+        --rpclisten=0.0.0.0:10009
+        --alias=vusd-oracle-1
+        --tlsextradomain=lnd-1
+        --noseedbackup
+
+  lnd-2:
+    image: lightninglabs/lnd:v0.17.4-beta
+    restart: unless-stopped
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    networks:
+      vusd_net:
+        ipv4_address: 172.28.2.2
+    ports:
+      - "10010:10009"
+    volumes:
+      - lnd2_data:/root/.lnd
+      - ./lnd.conf:/root/.lnd/lnd.conf:ro
+    environment:
+      - LND_ALIAS=vusd-oracle-2
+    command: >
+      lnd
+        --bitcoin.active --bitcoin.signet --bitcoin.node=bitcoind
+        --bitcoind.rpchost=bitcoind
+        --bitcoind.rpcuser=${BITCOIN_RPC_USER}
+        --bitcoind.rpcpass=${BITCOIN_RPC_PASS}
+        --bitcoind.zmqpubrawblock=tcp://bitcoind:28332
+        --bitcoind.zmqpubrawtx=tcp://bitcoind:28333
+        --rpclisten=0.0.0.0:10009
+        --alias=vusd-oracle-2
+        --tlsextradomain=lnd-2
+        --noseedbackup
+
+  lnd-3:
+    image: lightninglabs/lnd:v0.17.4-beta
+    restart: unless-stopped
+    depends_on:
+      bitcoind:
+        condition: service_healthy
+    networks:
+      vusd_net:
+        ipv4_address: 172.28.2.3
+    ports:
+      - "10011:10009"
+    volumes:
+      - lnd3_data:/root/.lnd
+      - ./lnd.conf:/root/.lnd/lnd.conf:ro
+    command: >
+      lnd
+        --bitcoin.active --bitcoin.signet --bitcoin.node=bitcoind
+        --bitcoind.rpchost=bitcoind
+        --bitcoind.rpcuser=${BITCOIN_RPC_USER}
+        --bitcoind.rpcpass=${BITCOIN_RPC_PASS}
+        --bitcoind.zmqpubrawblock=tcp://bitcoind:28332
+        --bitcoind.zmqpubrawtx=tcp://bitcoind:28333
+        --rpclisten=0.0.0.0:10009
+        --alias=vusd-oracle-3
+        --tlsextradomain=lnd-3
+        --noseedbackup
+
+  lnd-4:
+    image: lightninglabs/lnd:v0.17.4-beta
+    restart: unless-stopped
+    depends_on: { bitcoind: { condition: service_healthy } }
+    networks:
+      vusd_net:
+        ipv4_address: 172.28.2.4
+    ports: ["10012:10009"]
+    volumes: [lnd4_data:/root/.lnd, "./lnd.conf:/root/.lnd/lnd.conf:ro"]
+    command: >
+      lnd --bitcoin.active --bitcoin.signet --bitcoin.node=bitcoind
+        --bitcoind.rpchost=bitcoind --bitcoind.rpcuser=${BITCOIN_RPC_USER}
+        --bitcoind.rpcpass=${BITCOIN_RPC_PASS}
+        --bitcoind.zmqpubrawblock=tcp://bitcoind:28332
+        --bitcoind.zmqpubrawtx=tcp://bitcoind:28333
+        --rpclisten=0.0.0.0:10009 --alias=vusd-oracle-4
+        --tlsextradomain=lnd-4 --noseedbackup
+
+  lnd-5:
+    image: lightninglabs/lnd:v0.17.4-beta
+    restart: unless-stopped
+    depends_on: { bitcoind: { condition: service_healthy } }
+    networks:
+      vusd_net:
+        ipv4_address: 172.28.2.5
+    ports: ["10013:10009"]
+    volumes: [lnd5_data:/root/.lnd, "./lnd.conf:/root/.lnd/lnd.conf:ro"]
+    command: >
+      lnd --bitcoin.active --bitcoin.signet --bitcoin.node=bitcoind
+        --bitcoind.rpchost=bitcoind --bitcoind.rpcuser=${BITCOIN_RPC_USER}
+        --bitcoind.rpcpass=${BITCOIN_RPC_PASS}
+        --bitcoind.zmqpubrawblock=tcp://bitcoind:28332
+        --bitcoind.zmqpubrawtx=tcp://bitcoind:28333
+        --rpclisten=0.0.0.0:10009 --alias=vusd-oracle-5
+        --tlsextradomain=lnd-5 --noseedbackup
+
+  lnd-6:
+    image: lightninglabs/lnd:v0.17.4-beta
+    restart: unless-stopped
+    depends_on: { bitcoind: { condition: service_healthy } }
+    networks:
+      vusd_net:
+        ipv4_address: 172.28.2.6
+    ports: ["10014:10009"]
+    volumes: [lnd6_data:/root/.lnd, "./lnd.conf:/root/.lnd/lnd.conf:ro"]
+    command: >
+      lnd --bitcoin.active --bitcoin.signet --bitcoin.node=bitcoind
+        --bitcoind.rpchost=bitcoind --bitcoind.rpcuser=${BITCOIN_RPC_USER}
+        --bitcoind.rpcpass=${BITCOIN_RPC_PASS}
+        --bitcoind.zmqpubrawblock=tcp://bitcoind:28332
+        --bitcoind.zmqpubrawtx=tcp://bitcoind:28333
+        --rpclisten=0.0.0.0:10009 --alias=vusd-oracle-6
+        --tlsextradomain=lnd-6 --noseedbackup
+
+  lnd-7:
+    image: lightninglabs/lnd:v0.17.4-beta
+    restart: unless-stopped
+    depends_on: { bitcoind: { condition: service_healthy } }
+    networks:
+      vusd_net:
+        ipv4_address: 172.28.2.7
+    ports: ["10015:10009"]
+    volumes: [lnd7_data:/root/.lnd, "./lnd.conf:/root/.lnd/lnd.conf:ro"]
+    command: >
+      lnd --bitcoin.active --bitcoin.signet --bitcoin.node=bitcoind
+        --bitcoind.rpchost=bitcoind --bitcoind.rpcuser=${BITCOIN_RPC_USER}
+        --bitcoind.rpcpass=${BITCOIN_RPC_PASS}
+        --bitcoind.zmqpubrawblock=tcp://bitcoind:28332
+        --bitcoind.zmqpubrawtx=tcp://bitcoind:28333
+        --rpclisten=0.0.0.0:10009 --alias=vusd-oracle-7
+        --tlsextradomain=lnd-7 --noseedbackup
+
+  # ── VUSD Oracle nodes (one per LND node) ─────────────────────────────────────
+  oracle-1:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.oracle
+    restart: unless-stopped
+    depends_on: [lnd-1]
+    networks:
+      vusd_net:
+        ipv4_address: 172.28.3.1
+    environment:
+      - VUSD_NODE_ID=0
+      - VUSD_PRIVKEY_SEED=${ORACLE_1_PRIVKEY_SEED}
+      - LND_ENDPOINT=https://lnd-1:10009
+      - LND_MACAROON_PATH=/lnd/admin.macaroon
+      - LND_TLS_CERT_PATH=/lnd/tls.cert
+      - RUST_LOG=info
+    volumes:
+      - lnd1_data:/lnd:ro
+
+  oracle-2:
+    build: { context: .., dockerfile: deploy/Dockerfile.oracle }
+    restart: unless-stopped
+    depends_on: [lnd-2]
+    networks:
+      vusd_net:
+        ipv4_address: 172.28.3.2
+    environment:
+      - VUSD_NODE_ID=1
+      - VUSD_PRIVKEY_SEED=${ORACLE_2_PRIVKEY_SEED}
+      - LND_ENDPOINT=https://lnd-2:10009
+      - LND_MACAROON_PATH=/lnd/admin.macaroon
+      - LND_TLS_CERT_PATH=/lnd/tls.cert
+    volumes:
+      - lnd2_data:/lnd:ro
+
+  oracle-3:
+    build: { context: .., dockerfile: deploy/Dockerfile.oracle }
+    restart: unless-stopped
+    depends_on: [lnd-3]
+    networks:
+      vusd_net:
+        ipv4_address: 172.28.3.3
+    environment:
+      - VUSD_NODE_ID=2
+      - VUSD_PRIVKEY_SEED=${ORACLE_3_PRIVKEY_SEED}
+      - LND_ENDPOINT=https://lnd-3:10009
+      - LND_MACAROON_PATH=/lnd/admin.macaroon
+      - LND_TLS_CERT_PATH=/lnd/tls.cert
+    volumes:
+      - lnd3_data:/lnd:ro
+
+  oracle-4:
+    build: { context: .., dockerfile: deploy/Dockerfile.oracle }
+    restart: unless-stopped
+    depends_on: [lnd-4]
+    networks: { vusd_net: { ipv4_address: 172.28.3.4 } }
+    environment:
+      - VUSD_NODE_ID=3
+      - VUSD_PRIVKEY_SEED=${ORACLE_4_PRIVKEY_SEED}
+      - LND_ENDPOINT=https://lnd-4:10009
+      - LND_MACAROON_PATH=/lnd/admin.macaroon
+      - LND_TLS_CERT_PATH=/lnd/tls.cert
+    volumes: [lnd4_data:/lnd:ro]
+
+  oracle-5:
+    build: { context: .., dockerfile: deploy/Dockerfile.oracle }
+    restart: unless-stopped
+    depends_on: [lnd-5]
+    networks: { vusd_net: { ipv4_address: 172.28.3.5 } }
+    environment:
+      - VUSD_NODE_ID=4
+      - VUSD_PRIVKEY_SEED=${ORACLE_5_PRIVKEY_SEED}
+      - LND_ENDPOINT=https://lnd-5:10009
+      - LND_MACAROON_PATH=/lnd/admin.macaroon
+      - LND_TLS_CERT_PATH=/lnd/tls.cert
+    volumes: [lnd5_data:/lnd:ro]
+
+  oracle-6:
+    build: { context: .., dockerfile: deploy/Dockerfile.oracle }
+    restart: unless-stopped
+    depends_on: [lnd-6]
+    networks: { vusd_net: { ipv4_address: 172.28.3.6 } }
+    environment:
+      - VUSD_NODE_ID=5
+      - VUSD_PRIVKEY_SEED=${ORACLE_6_PRIVKEY_SEED}
+      - LND_ENDPOINT=https://lnd-6:10009
+      - LND_MACAROON_PATH=/lnd/admin.macaroon
+      - LND_TLS_CERT_PATH=/lnd/tls.cert
+    volumes: [lnd6_data:/lnd:ro]
+
+  oracle-7:
+    build: { context: .., dockerfile: deploy/Dockerfile.oracle }
+    restart: unless-stopped
+    depends_on: [lnd-7]
+    networks: { vusd_net: { ipv4_address: 172.28.3.7 } }
+    environment:
+      - VUSD_NODE_ID=6
+      - VUSD_PRIVKEY_SEED=${ORACLE_7_PRIVKEY_SEED}
+      - LND_ENDPOINT=https://lnd-7:10009
+      - LND_MACAROON_PATH=/lnd/admin.macaroon
+      - LND_TLS_CERT_PATH=/lnd/tls.cert
+    volumes: [lnd7_data:/lnd:ro]
+
+  # ── Keeper bots ──────────────────────────────────────────────────────────────
+  keeper-1:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.keeper
+    restart: unless-stopped
+    depends_on: [lnd-1, oracle-1]
+    networks:
+      vusd_net:
+        ipv4_address: 172.28.4.1
+    environment:
+      - VUSD_KEEPER_ID=0
+      - VUSD_KEEPER_PUBKEY=${KEEPER_1_PUBKEY}
+      - VUSD_ENGINE_ENDPOINT=http://vusd-node:9090
+      - RUST_LOG=info
+    command: ["vusd-keeper", "run", "--id=0"]
+
+  keeper-2:
+    build: { context: .., dockerfile: deploy/Dockerfile.keeper }
+    restart: unless-stopped
+    depends_on: [lnd-2, oracle-1]
+    networks: { vusd_net: { ipv4_address: 172.28.4.2 } }
+    environment:
+      - VUSD_KEEPER_ID=1
+      - VUSD_KEEPER_PUBKEY=${KEEPER_2_PUBKEY}
+      - VUSD_ENGINE_ENDPOINT=http://vusd-node:9090
+    command: ["vusd-keeper", "run", "--id=1"]
+
+  keeper-3:
+    build: { context: .., dockerfile: deploy/Dockerfile.keeper }
+    restart: unless-stopped
+    depends_on: [lnd-3, oracle-1]
+    networks: { vusd_net: { ipv4_address: 172.28.4.3 } }
+    environment:
+      - VUSD_KEEPER_ID=2
+      - VUSD_KEEPER_PUBKEY=${KEEPER_3_PUBKEY}
+      - VUSD_ENGINE_ENDPOINT=http://vusd-node:9090
+    command: ["vusd-keeper", "run", "--id=2"]
+
+  # ── VUSD vault engine node ────────────────────────────────────────────────────
+  vusd-node:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile.vusd
+    restart: unless-stopped
+    depends_on: [bitcoind, lnd-1]
+    networks:
+      vusd_net:
+        ipv4_address: 172.28.5.1
+    ports:
+      - "9090:9090"   # Internal engine API (keeper <-> engine)
+      - "9091:9091"   # Health/metrics endpoint
+    volumes:
+      - vusd_data:/data
+    environment:
+      - VUSD_NETWORK=signet
+      - VUSD_BITCOIN_RPC_URL=http://bitcoind:8332
+      - VUSD_BITCOIN_RPC_USER=${BITCOIN_RPC_USER}
+      - VUSD_BITCOIN_RPC_PASS=${BITCOIN_RPC_PASS}
+      - VUSD_LND_ENDPOINT=https://lnd-1:10009
+      - VUSD_LND_MACAROON_PATH=/lnd/admin.macaroon
+      - VUSD_LND_TLS_CERT_PATH=/lnd/tls.cert
+      - RUST_LOG=info,vscx_core=debug
+    volumes:
+      - vusd_data:/data
+      - lnd1_data:/lnd:ro

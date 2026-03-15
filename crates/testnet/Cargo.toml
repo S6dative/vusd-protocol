@@ -1,0 +1,28 @@
+[package]
+name        = "testnet"
+description = "VUSD testnet harness — chaos tests, benchmarks, deployment scripts"
+version.workspace   = true
+edition.workspace   = true
+authors.workspace   = true
+
+[[bin]]
+name = "vusd-testnet"
+path = "src/main.rs"
+
+[dependencies]
+vscx-core     = { path = "../vscx-core" }
+oracle        = { path = "../oracle" }
+keeper        = { path = "../keeper" }
+taproot-vault = { path = "../taproot-vault" }
+privacy       = { path = "../privacy" }
+lightning     = { path = "../lightning" }
+serde         = { workspace = true }
+serde_json    = { workspace = true }
+sha2          = { workspace = true }
+rand          = { workspace = true }
+thiserror     = { workspace = true }
+anyhow        = { workspace = true }
+tracing       = { workspace = true }
+tracing-subscriber = { workspace = true }
+tokio         = { workspace = true }
+chrono        = { workspace = true }

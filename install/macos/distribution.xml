@@ -1,0 +1,49 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Thunder Node — macOS Package Distribution
+  ==========================================
+  Used by `productbuild` to create a distributable .pkg installer.
+
+  Installs: /usr/local/bin/thunder  (universal binary, Intel + Apple Silicon)
+
+  To install from command line without the GUI:
+    sudo installer -pkg thunder-*.pkg -target /
+-->
+<installer-gui-script minSpecVersion="2">
+
+  <title>Thunder Node</title>
+  <organization>com.vultd.thunder</organization>
+  <domains enable_localSystem="true" />
+  <options customize="never" require-scripts="false" rootVolumeOnly="true" />
+
+  <!-- Welcome screen text (references welcome.html in resources/) -->
+  <welcome    file="welcome.html"    mime-type="text/html" />
+  <readme     file="readme.html"     mime-type="text/html" />
+  <conclusion file="conclusion.html" mime-type="text/html" />
+
+  <!-- Allow installation anywhere; default to system volume -->
+  <allowed-os-versions>
+    <os-version min="11.0" />
+  </allowed-os-versions>
+
+  <pkg-ref id="com.vultd.thunder">
+    <bundle-version />
+  </pkg-ref>
+
+  <choices-outline>
+    <line choice="default">
+      <line choice="com.vultd.thunder" />
+    </line>
+  </choices-outline>
+
+  <choice id="default" />
+  <choice id="com.vultd.thunder" visible="false">
+    <pkg-ref id="com.vultd.thunder" />
+  </choice>
+
+  <pkg-ref
+    id="com.vultd.thunder"
+    version="0"
+    onConclusion="none">Thunder.pkg</pkg-ref>
+
+</installer-gui-script>

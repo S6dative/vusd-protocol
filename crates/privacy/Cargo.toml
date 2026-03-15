@@ -1,0 +1,19 @@
+[package]
+name        = "privacy"
+description = "VUSD privacy rails: stealth addresses, ring sigs, Pedersen commitments, Bulletproofs"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+
+[dependencies]
+vscx-core        = { path = "../vscx-core" }
+serde            = { workspace = true }
+sha2             = { workspace = true }
+thiserror        = { workspace = true }
+tracing          = { workspace = true }
+rand             = { workspace = true }
+rand_core        = { workspace = true }
+zeroize          = { workspace = true }
+curve25519-dalek-ng = { workspace = true }
+bulletproofs     = { workspace = true }
+merlin           = { workspace = true }

@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { font-family: -apple-system, sans-serif; font-size: 13px; margin: 20px; color: #1a1a1a; }
+    h1   { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+    code { background: #f4f4f4; padding: 2px 5px; border-radius: 3px; font-size: 12px; }
+    .tag { display: inline-block; background: #f5f0e8; color: #7a5c00;
+           border: 1px solid #e0c97a; border-radius: 4px;
+           padding: 1px 7px; font-size: 11px; margin-bottom: 14px; }
+  </style>
+</head>
+<body>
+  <h1>⚡ Thunder Node</h1>
+  <span class="tag">Privacy-maximized Lightning relay for VULTD</span>
+  <p>
+    This installer will place the <code>thunder</code> binary in
+    <code>/usr/local/bin/</code> so it is available from any Terminal window.
+  </p>
+  <p>
+    Thunder Node wraps your VUSD transfers in ring signatures, stealth addresses,
+    Tor onion routing, and bulletproof amount commitments — then relays them through
+    a multi-hop private Lightning network. <em>"You can't see thunder."</em>
+  </p>
+  <p><strong>After installation, open Terminal and run:</strong></p>
+  <pre><code>thunder setup      # generate Tor + LND configuration
+thunder threats    # review all 25 threat mitigations
+thunder fees 1000  # preview fee breakdown
+thunder start      # start the relay (requires Tor + LND)</code></pre>
+  <p style="font-size:11px; color:#666;">
+    Requires macOS 11.0 (Big Sur) or later. Universal binary: runs natively on
+    Intel and Apple Silicon (M1/M2/M3/M4).
+  </p>
+</body>
+</html>

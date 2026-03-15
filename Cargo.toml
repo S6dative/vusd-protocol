@@ -1,0 +1,82 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/vscx-core",
+    "crates/oracle",
+    "crates/keeper",
+    "crates/taproot-vault",
+    "crates/privacy",
+    "crates/lightning",
+    "crates/cli",
+    "crates/testnet",
+    "crates/thunder-node",
+]
+
+[workspace.package]
+version     = "0.1.0"
+edition     = "2021"
+authors     = ["VUSD Protocol — anonymous"]
+license     = "MIT"
+repository  = "https://github.com/S6dative/vusd-protocol"
+
+[workspace.dependencies]
+# Serialization
+serde              = { version = "1", features = ["derive"] }
+serde_json         = "1"
+
+# Hashing
+sha2               = "0.10"
+sha3               = "0.10"  # curve25519-dalek-ng 4 requires digest 0.10.x
+hmac               = "0.12"
+
+# Randomness
+rand               = "0.8"
+rand_core          = "0.6"
+
+# Key hygiene
+zeroize            = { version = "1", features = ["derive"] }
+
+# secp256k1: BIP-340 Schnorr for oracle signatures (v0.28 is latest stable)
+secp256k1          = { version = "0.28", features = ["global-context", "rand-std"] }
+
+# curve25519-dalek v3: used by bulletproofs v4 internally.
+curve25519-dalek-ng = "4"              # used directly by bulletproofs 4.0
+rand_core_05        = { package = "rand_core", version = "0.5" }  # for curve25519-dalek compat
+# We pin to v3 so types are compatible across the whole privacy crate.
+# v3 → v4 migration: Scalar::zero() not Scalar::ZERO; CompressedRistretto::from_bytes not from_slice.
+curve25519-dalek   = { version = "3", features = ["nightly", "u64_backend"] }
+
+# sha3 satisfies the Digest<OutputSize=U64> bound needed by hash_from_bytes in dalek v3
+# (already listed above as sha3)
+
+# Bulletproofs v4: Ristretto range proofs (depends on curve25519-dalek 3.x)
+bulletproofs       = "4"
+merlin             = "3"
+
+# Bitcoin (taproot-vault)
+bitcoin            = { version = "0.31" }
+
+# Async
+tokio              = { version = "1", features = ["full"] }
+reqwest            = { version = "0.11", features = ["json", "blocking"] }
+# gRPC (LND Lightning client)
+tonic              = { version = "0.11", features = ["tls"] }
+prost              = "0.12"
+
+# Error handling
+thiserror          = "1"
+anyhow             = "1"
+
+# Logging
+tracing            = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Time
+chrono             = { version = "0.4", features = ["serde"] }
+
+# Collections
+dashmap            = "5"
+parking_lot        = "0.12"
+
+# Testing
+proptest           = "1"

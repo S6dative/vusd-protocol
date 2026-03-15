@@ -1,0 +1,28 @@
+[package]
+name        = "thunder-node"
+description = "Thunder Node — anonymous Lightning relay with privacy fee routing"
+version.workspace   = true
+edition.workspace   = true
+authors.workspace   = true
+
+[dependencies]
+vscx-core  = { path = "../vscx-core" }
+lightning  = { path = "../lightning" }
+privacy    = { path = "../privacy" }
+
+serde        = { workspace = true }
+serde_json   = { workspace = true }
+sha2         = { workspace = true }
+rand         = { workspace = true }
+thiserror    = { workspace = true }
+anyhow       = { workspace = true }
+tracing      = { workspace = true }
+tokio        = { workspace = true }
+curve25519-dalek = { workspace = true }
+toml         = "0.8"
+
+tracing-subscriber = { workspace = true }
+
+[[bin]]
+name = "thunder"
+path = "src/main.rs"

@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <style>
+    body { font-family: -apple-system, sans-serif; font-size: 13px; margin: 20px; color: #1a1a1a; }
+    h2   { font-size: 15px; font-weight: 600; margin-top: 18px; margin-bottom: 4px; }
+    code { background: #f4f4f4; padding: 2px 5px; border-radius: 3px; }
+    ul   { margin: 6px 0; padding-left: 20px; }
+    li   { margin-bottom: 3px; }
+  </style>
+</head>
+<body>
+  <h2>Prerequisites</h2>
+  <ul>
+    <li><strong>Tor</strong> — <code>brew install tor</code> or download from torproject.org</li>
+    <li><strong>LND</strong> — download from github.com/lightningnetwork/lnd/releases</li>
+    <li><strong>Bitcoin Core</strong> (optional) — bitcoincore.org</li>
+  </ul>
+
+  <h2>Setup steps</h2>
+  <ol>
+    <li>Run <code>thunder setup</code> to generate <code>torrc</code> and <code>lnd.conf</code></li>
+    <li>Copy <code>torrc</code> to <code>~/.tor/torrc</code> and restart Tor: <code>brew services restart tor</code></li>
+    <li>Start LND with the generated config: <code>lnd --configfile=~/.lnd/lnd.conf</code></li>
+    <li>Open private channels with relay peers (see documentation)</li>
+    <li>Run <code>thunder start</code></li>
+  </ol>
+
+  <h2>Operator security checklist</h2>
+  <ul>
+    <li>☐ Tor must be running before starting Thunder Node</li>
+    <li>☐ LND configured with <code>tor.active=true</code> and <code>nolisten=true</code></li>
+    <li>☐ Fund LND wallet with non-KYC Bitcoin only</li>
+    <li>☐ Store operator seed phrase offline (paper, air-gapped device)</li>
+    <li>☐ Pay for hosting with Monero — never credit card</li>
+  </ul>
+
+  <p style="font-size:11px; color:#666;">
+    Full documentation: github.com/S6dative/vusd-protocol
+  </p>
+</body>
+</html>

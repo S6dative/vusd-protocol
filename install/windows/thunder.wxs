@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Thunder Node — Windows MSI Installer
+  ======================================
+  Built with WiX Toolset v3.x (https://wixtoolset.org/)
+
+  What this installs:
+    %ProgramFiles%\ThunderNode\thunder.exe   — main binary
+    %ProgramFiles%\ThunderNode\README.txt    — quick start guide
+    PATH entry                               — so "thunder" works from any terminal
+    Start Menu shortcut                      — Thunder Node command prompt
+
+  Built by the GitHub Actions release workflow.
+  To rebuild manually:
+    candle install\windows\thunder.wxs -dVersion=0.1.0 -o thunder.wixobj
+    light  thunder.wixobj -ext WixUIExtension -o thunder.msi
+-->
+<Wix xmlns="http://schemas.microsoft.com/wix/2006/wi"
+     xmlns:util="http://schemas.microsoft.com/wix/UtilExtension">
+
+  <Product
+    Id="*"
+    Name="Thunder Node"
+    Language="1033"
+    Version="$(var.Version)"
+    Manufacturer="VULTD Protocol"
+    UpgradeCode="A7F3C2D1-8B4E-4A9F-BC15-D2E6F8A3C701">
+
+    <Package
+      InstallerVersion="500"
+      Compressed="yes"
+      InstallScope="perMachine"
+      Description="Thunder Node — anonymous Lightning relay for VULTD"
+      Comments="Privacy-maximized Lightning relay. You can't see thunder." />
+
+    <!-- ── Upgrade behaviour: silently replace older versions ── -->
+    <MajorUpgrade
+      DowngradeErrorMessage="A newer version of Thunder Node is already installed."
+      Schedule="afterInstallInitialize" />
+
+    <MediaTemplate EmbedCab="yes" />
+
+    <!-- ── UI: standard WiX wizard with custom banner colour ── -->
+    <UIRef Id="WixUI_InstallDir" />
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+
+    <!-- ── Feature: the only feature — the binary ── -->
+    <Feature Id="ProductFeature" Title="Thunder Node" Level="1">
+      <ComponentGroupRef Id="ThunderComponents" />
+      <ComponentRef Id="PathEnvComponent" />
+    </Feature>
+
+  </Product>
+
+  <!-- ── Directory layout ── -->
+  <Fragment>
+    <Directory Id="TARGETDIR" Name="SourceDir">
+      <Directory Id="ProgramFiles64Folder">
+        <Directory Id="INSTALLDIR" Name="ThunderNode" />
+      </Directory>
+      <Directory Id="ProgramMenuFolder">
+        <Directory Id="ThunderStartMenu" Name="Thunder Node" />
+      </Directory>
+    </Directory>
+  </Fragment>
+
+  <!-- ── Files and shortcuts ── -->
+  <Fragment>
+    <ComponentGroup Id="ThunderComponents" Directory="INSTALLDIR">
+
+      <!-- Main binary -->
+      <Component Id="ThunderExe" Guid="*">
+        <File
+          Id="ThunderExeFile"
+          Source="dist\thunder.exe"
+          Name="thunder.exe"
+          KeyPath="yes" />
+
+        <!-- Start Menu shortcut — opens a cmd window ready to run thunder -->
+        <Shortcut
+          Id="ThunderStartMenuShortcut"
+          Directory="ThunderStartMenu"
+          Name="Thunder Node"
+          Description="Privacy-maximized VULTD Lightning relay"
+          Target="[INSTALLDIR]thunder.exe"
+          WorkingDirectory="INSTALLDIR"
+          Show="normal" />
+
+        <!-- Remove Start Menu folder on uninstall -->
+        <RemoveFolder Id="ThunderStartMenu" On="uninstall" />
+        <RegistryValue
+          Root="HKCU"
+          Key="Software\ThunderNode"
+          Name="installed"
+          Type="integer"
+          Value="1"
+          KeyPath="no" />
+      </Component>
+
+      <!-- Quick-start README -->
+      <Component Id="ReadmeComponent" Guid="*">
+        <File
+          Id="ReadmeFile"
+          Source="install\windows\README.txt"
+          Name="README.txt"
+          KeyPath="yes" />
+      </Component>
+
+    </ComponentGroup>
+
+    <!-- PATH: add INSTALLDIR to system PATH so "thunder" works from any terminal -->
+    <Component Id="PathEnvComponent" Directory="INSTALLDIR" Guid="*">
+      <Environment
+        Id="PATH"
+        Name="PATH"
+        Value="[INSTALLDIR]"
+        Permanent="no"
+        Part="last"
+        Action="set"
+        System="yes" />
+      <RegistryValue
+        Root="HKLM"
+        Key="Software\ThunderNode"
+        Name="PathSet"
+        Type="integer"
+        Value="1"
+        KeyPath="yes" />
+    </Component>
+
+  </Fragment>
+
+</Wix>

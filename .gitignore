@@ -1,0 +1,49 @@
+# ── Rust / Cargo ──────────────────────────────────────────────────────────────
+/target/
+**/*.rs.bk
+Cargo.lock          # library crate — do not commit lock file
+
+# ── Secrets — NEVER commit these ─────────────────────────────────────────────
+.env
+.env.local
+.env.*.local
+secrets/
+*.pem
+*.key
+*.seed
+*_privkey*
+*_secret*
+
+# ── Bitcoin / LND node data ───────────────────────────────────────────────────
+deploy/data/
+deploy/bitcoind-data/
+deploy/lnd-*/
+*.wallet
+wallet.dat
+.bitcoin/
+.lnd/
+
+# ── Docker ────────────────────────────────────────────────────────────────────
+docker-compose.override.yml
+
+# ── OS / Editor ──────────────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# ── Test / bench artifacts ────────────────────────────────────────────────────
+test-output.txt
+flamegraph.svg
+perf.data
+
+# LND macaroon files — never commit
+*.macaroon

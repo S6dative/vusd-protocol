@@ -1,0 +1,359 @@
+name: Thunder Node — Release
+
+# Triggers on version tags: v0.1.0, v1.2.3, etc.
+# Push a tag to cut a release:
+#   git tag v0.1.0 && git push origin v0.1.0
+on:
+  push:
+    tags:
+      - "v[0-9]+.[0-9]+.[0-9]+"
+
+permissions:
+  contents: write   # needed to create GitHub Releases and upload assets
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE:   1
+  BINARY_NAME:      thunder
+
+# ─────────────────────────────────────────────────────────────────────────────
+# BUILD MATRIX
+# Produces six release assets:
+#   thunder-v1.0.0-windows-x86_64.exe      (Windows, 64-bit)
+#   thunder-v1.0.0-windows-x86_64.msi      (Windows installer — see build-msi job)
+#   thunder-v1.0.0-macos-x86_64            (macOS Intel)
+#   thunder-v1.0.0-macos-aarch64           (macOS Apple Silicon / M1-M4)
+#   thunder-v1.0.0-linux-x86_64            (Linux, 64-bit)
+#   thunder-v1.0.0-linux-aarch64           (Linux, ARM64 / Raspberry Pi)
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+
+  # ── Step 1: verify the build is clean before cutting a release ────────────
+  preflight:
+    name: Pre-release checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          components: rustfmt, clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install system deps
+        run: sudo apt-get install -y pkg-config libssl-dev
+
+      - name: Format check
+        run: cargo fmt --all -- --check
+
+      - name: Clippy (deny warnings)
+        run: cargo clippy -p thunder-node --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test -p thunder-node --lib
+
+  # ── Step 2: cross-platform binary builds ──────────────────────────────────
+  build:
+    name: Build — ${{ matrix.target }}
+    needs: preflight
+    runs-on: ${{ matrix.os }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Windows 64-bit
+          - os:     windows-latest
+            target: x86_64-pc-windows-msvc
+            ext:    .exe
+            label:  windows-x86_64
+
+          # macOS Intel
+          - os:     macos-13
+            target: x86_64-apple-darwin
+            ext:    ""
+            label:  macos-x86_64
+
+          # macOS Apple Silicon (M1/M2/M3/M4)
+          - os:     macos-latest
+            target: aarch64-apple-darwin
+            ext:    ""
+            label:  macos-aarch64
+
+          # Linux 64-bit (statically linked via musl for maximum compatibility)
+          - os:     ubuntu-latest
+            target: x86_64-unknown-linux-musl
+            ext:    ""
+            label:  linux-x86_64
+
+          # Linux ARM64 (Raspberry Pi 4/5, cloud ARM instances)
+          - os:     ubuntu-latest
+            target: aarch64-unknown-linux-musl
+            ext:    ""
+            label:  linux-aarch64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@nightly
+        with:
+          targets: ${{ matrix.target }}
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          key: ${{ matrix.target }}
+
+      # musl targets need cross-compilation toolchain on Linux
+      - name: Install musl tools (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y musl-tools gcc-aarch64-linux-gnu
+          # musl cross for aarch64
+          if [[ "${{ matrix.target }}" == "aarch64-unknown-linux-musl" ]]; then
+            sudo apt-get install -y crossbuild-essential-arm64
+          fi
+
+      - name: Install system deps (macOS)
+        if: runner.os == 'macOS'
+        run: brew install openssl@3
+
+      - name: Build release binary
+        run: >
+          cargo build
+          --release
+          --target ${{ matrix.target }}
+          -p thunder-node
+        env:
+          # Point openssl-sys to brew path on macOS
+          OPENSSL_DIR:       ${{ runner.os == 'macOS' && '/opt/homebrew/opt/openssl@3' || '' }}
+          OPENSSL_STATIC:    ${{ runner.os == 'macOS' && '1' || '' }}
+          # musl static linking
+          CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER:   musl-gcc
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER:  aarch64-linux-gnu-gcc
+
+      # Rename to the release asset name: thunder-v0.1.0-linux-x86_64
+      - name: Rename binary
+        shell: bash
+        run: |
+          VERSION="${{ github.ref_name }}"
+          SRC="target/${{ matrix.target }}/release/${BINARY_NAME}${{ matrix.ext }}"
+          DST="${BINARY_NAME}-${VERSION}-${{ matrix.label }}${{ matrix.ext }}"
+          cp "$SRC" "$DST"
+          echo "ASSET_PATH=$DST" >> $GITHUB_ENV
+          echo "ASSET_NAME=$DST" >> $GITHUB_ENV
+
+      # Generate SHA256 checksum alongside the binary
+      - name: Checksum (Linux/macOS)
+        if: runner.os != 'Windows'
+        run: sha256sum "${{ env.ASSET_PATH }}" > "${{ env.ASSET_PATH }}.sha256"
+
+      - name: Checksum (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $hash = (Get-FileHash "$env:ASSET_PATH" -Algorithm SHA256).Hash.ToLower()
+          "$hash  $env:ASSET_NAME" | Out-File -Encoding ascii "$env:ASSET_PATH.sha256"
+
+      # Upload binary + checksum as workflow artifact (consumed by release job)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.ASSET_NAME }}
+          path: |
+            ${{ env.ASSET_PATH }}
+            ${{ env.ASSET_PATH }}.sha256
+          retention-days: 1
+
+  # ── Step 3: build Windows MSI installer ───────────────────────────────────
+  build-msi:
+    name: Build — Windows MSI installer
+    needs: build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Download the Windows binary built above
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "thunder-*-windows-x86_64.exe"
+          merge-multiple: true
+          path: dist/
+
+      - name: Install WiX Toolset
+        run: |
+          choco install wixtoolset --no-progress -y
+          echo "C:\Program Files (x86)\WiX Toolset v3.11\bin" | Out-File -Append $env:GITHUB_PATH
+        shell: pwsh
+
+      # Copy the .exe so the WiX template can find it at a fixed path
+      - name: Stage binary
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem dist\*.exe | Select-Object -First 1
+          Copy-Item $exe.FullName dist\thunder.exe
+
+      # Build the MSI using the WiX template in install/windows/
+      - name: Build MSI
+        shell: pwsh
+        run: |
+          $version = "${{ github.ref_name }}".TrimStart("v")
+          candle install\windows\thunder.wxs -dVersion=$version -o thunder.wixobj
+          light  thunder.wixobj -ext WixUIExtension -o thunder-${{ github.ref_name }}-windows-x86_64.msi
+
+      - name: Checksum MSI
+        shell: pwsh
+        run: |
+          $msi  = "thunder-${{ github.ref_name }}-windows-x86_64.msi"
+          $hash = (Get-FileHash $msi -Algorithm SHA256).Hash.ToLower()
+          "$hash  $msi" | Out-File -Encoding ascii "$msi.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: thunder-${{ github.ref_name }}-windows-x86_64.msi
+          path: |
+            thunder-${{ github.ref_name }}-windows-x86_64.msi
+            thunder-${{ github.ref_name }}-windows-x86_64.msi.sha256
+          retention-days: 1
+
+  # ── Step 4: build macOS .pkg installer ────────────────────────────────────
+  build-pkg:
+    name: Build — macOS .pkg installer
+    needs: build
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Download both macOS binaries
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: "thunder-*-macos-*"
+          merge-multiple: true
+          path: dist/
+
+      # Create a universal binary (Intel + Apple Silicon in one file)
+      - name: Create universal binary
+        run: |
+          lipo -create \
+            dist/thunder-${{ github.ref_name }}-macos-x86_64 \
+            dist/thunder-${{ github.ref_name }}-macos-aarch64 \
+            -output dist/thunder-universal
+          chmod +x dist/thunder-universal
+
+      # Build a proper macOS .pkg using pkgbuild + productbuild
+      - name: Build .pkg
+        run: |
+          VERSION="${{ github.ref_name }}"
+          # Stage into payload directory
+          mkdir -p pkg-root/usr/local/bin
+          cp dist/thunder-universal pkg-root/usr/local/bin/thunder
+          chmod 755 pkg-root/usr/local/bin/thunder
+
+          # Component package
+          pkgbuild \
+            --root     pkg-root \
+            --identifier com.vultd.thunder \
+            --version  "${VERSION#v}" \
+            --install-location / \
+            Thunder.pkg
+
+          # Distribution package with welcome screen
+          productbuild \
+            --distribution install/macos/distribution.xml \
+            --package-path . \
+            --resources    install/macos/resources \
+            "thunder-${VERSION}-macos-universal.pkg"
+
+      - name: Checksum .pkg
+        run: |
+          PKG="thunder-${{ github.ref_name }}-macos-universal.pkg"
+          shasum -a 256 "$PKG" > "$PKG.sha256"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: thunder-${{ github.ref_name }}-macos-universal.pkg
+          path: |
+            thunder-${{ github.ref_name }}-macos-universal.pkg
+            thunder-${{ github.ref_name }}-macos-universal.pkg.sha256
+          retention-days: 1
+
+  # ── Step 5: create GitHub Release and attach all assets ───────────────────
+  release:
+    name: Publish GitHub Release
+    needs: [build, build-msi, build-pkg]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Download everything built above
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+          path: release-assets/
+
+      - name: List assets
+        run: ls -lh release-assets/
+
+      # Extract version from tag for the release body
+      - name: Read changelog entry
+        id: changelog
+        run: |
+          VERSION="${{ github.ref_name }}"
+          # Pull the section matching this version from CHANGELOG.md
+          NOTES=$(awk "/^## \[?${VERSION#v}\]?/{flag=1; next} /^## /{flag=0} flag" CHANGELOG.md)
+          echo "NOTES<<EOF" >> $GITHUB_ENV
+          echo "$NOTES" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name:       "Thunder Node ${{ github.ref_name }}"
+          body: |
+            ## ⚡ Thunder Node ${{ github.ref_name }}
+
+            "You can't see thunder."
+
+            A privacy-maximized VULTD Lightning relay node with anonymous operator fee routing.
+            Combines Tor hidden service, private channels, ephemeral key rotation, multi-hop
+            relay paths, and traffic padding into a single hardened binary.
+
+            ---
+
+            ${{ env.NOTES }}
+
+            ---
+
+            ### Installation
+
+            | Platform | File | Notes |
+            |---|---|---|
+            | Windows (installer) | `thunder-*-windows-x86_64.msi` | Double-click, follow wizard |
+            | Windows (binary) | `thunder-*-windows-x86_64.exe` | Run directly, no install needed |
+            | macOS (installer) | `thunder-*-macos-universal.pkg` | Universal: Intel + Apple Silicon |
+            | Linux x86_64 | `thunder-*-linux-x86_64` | Static binary, no dependencies |
+            | Linux ARM64 | `thunder-*-linux-aarch64` | Raspberry Pi 4/5, ARM cloud |
+
+            **Quick start (all platforms):**
+            ```
+            thunder setup    # generate torrc + lnd.conf
+            thunder threats  # review the 25-threat security matrix
+            thunder fees 1000  # preview fees for a 1000 VUSD transfer
+            ```
+
+            **Verify your download** — every asset ships with a `.sha256` checksum file:
+            ```bash
+            # Linux / macOS
+            sha256sum -c thunder-*-linux-x86_64.sha256
+
+            # Windows (PowerShell)
+            Get-FileHash thunder-*-windows-x86_64.exe -Algorithm SHA256
+            ```
+
+            ### What's new
+            See [CHANGELOG.md](CHANGELOG.md) for full details.
+
+          draft:      false
+          prerelease: ${{ contains(github.ref_name, '-') }}   # v1.0.0-beta → prerelease
+          files:      release-assets/*
+          token:      ${{ secrets.GITHUB_TOKEN }}
